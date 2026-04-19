@@ -1,0 +1,16 @@
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Archivo:wght@400;500;600;700;800;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root {
+  height: 100%;
+  background-color: #000;
+}
+
+body {
+  font-family: 'Archivo', system-ui, sans-serif;
+  color: white;
+  margin: 0;
+}

@@ -1,0 +1,23 @@
+{
+  "name": "playoff-picks",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "install-all": "npm install && cd server && npm install && cd ../client && npm install",
+    "dev": "concurrently -n server,client -c blue,green \"npm --prefix server run dev\" \"npm --prefix client run dev\"",
+    "start": "npm --prefix server start",
+    "build": "npm --prefix client run build",
+    "preview": "cd client && npm run preview",
+    "prod:start": "launchctl load ~/Library/LaunchAgents/com.playoff-picks.plist",
+    "prod:stop": "launchctl unload ~/Library/LaunchAgents/com.playoff-picks.plist && lsof -ti:5174 | xargs kill -9 2>/dev/null || true",
+    "prod:restart": "npm run prod:stop && npm run prod:start",
+    "prod:logs": "cat /tmp/playoff-picks.log",
+    "prod:errors": "cat /tmp/playoff-picks-error.log",
+    "prod:status": "launchctl list | grep playoff-picks",
+    "prod:deploy": "npm run build && npm run prod:restart"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

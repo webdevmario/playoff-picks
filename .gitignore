@@ -12,3 +12,6 @@ server/.env
 
 # misc
 .env.local
+
+# DB snapshots
+backups/

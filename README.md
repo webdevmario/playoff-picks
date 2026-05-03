@@ -46,35 +46,38 @@ Find your Mac's Tailscale name/IP with `tailscale status` or in the Tailscale me
 
 ## Run it forever in the background
 
-The simplest option is a LaunchAgent. Create `~/Library/LaunchAgents/com.playoffpicks.plist`:
+A launchd plist template is checked into the repo. Install it once:
 
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key><string>com.playoffpicks</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>/usr/local/bin/node</string>
-    <string>/FULL/PATH/TO/playoff-picks-app/server/index.js</string>
-  </array>
-  <key>WorkingDirectory</key><string>/FULL/PATH/TO/playoff-picks-app</string>
-  <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key><true/>
-  <key>StandardOutPath</key><string>/tmp/playoffpicks.log</string>
-  <key>StandardErrorPath</key><string>/tmp/playoffpicks.err</string>
-</dict>
-</plist>
+```bash
+cp scripts/com.playoff-picks.plist ~/Library/LaunchAgents/com.playoff-picks.plist
+npm run build           # build client → client/dist
+npm run prod:start      # load the launchd job
+npm run prod:status     # confirm PID + last-exit 0
+npm run prod:logs       # see startup banner
 ```
 
-Then `launchctl load ~/Library/LaunchAgents/com.playoffpicks.plist`.
+Day-to-day commands:
 
-Replace `/FULL/PATH/TO/` with the real path. Find your node binary with `which node` (may be `/opt/homebrew/bin/node` on Apple Silicon).
+```bash
+npm run prod:deploy     # build + restart (use after code changes)
+npm run prod:restart
+npm run prod:stop
+npm run prod:logs       # cat stdout
+npm run prod:errors     # cat stderr
+```
+
+Full operations runbook: [docs/OPERATIONS.md](docs/OPERATIONS.md).
 
 ## Data
 
-SQLite file lives at `server/data.db`. Back it up by copying that file. Nothing else matters.
+SQLite file lives at `server/data.db`. Snapshot it:
+
+```bash
+npm run db:backup       # → backups/data-YYYYMMDD-HHMMSS.db
+```
+
+Restore by copying a snapshot back over `server/data.db` (stop the
+service first; remove the `-wal`/`-shm` files alongside).
 
 ## Admin
 

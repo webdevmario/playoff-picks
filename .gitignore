@@ -4,10 +4,11 @@ build/
 .DS_Store
 *.log
 
-# data
-server/data.db
-server/data.db-wal
-server/data.db-shm
+# data (the live database is in ~/Library/Application Support/playoff-picks)
+server/data.db*
+*.db
+*.db-wal
+*.db-shm
 server/.env
 
 # misc

@@ -1,16 +1,67 @@
-@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Archivo:wght@400;500;600;700;800;900&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-html, body, #root {
-  height: 100%;
-  background-color: #000;
+:root {
+  --bg: 246 246 247;
+  --surface: 255 255 255;
+  --surface-2: 241 241 243;
+  --line: 226 226 230;
+  --ink: 20 20 23;
+  --muted: 105 105 115;
+  --faint: 160 160 170;
+  --accent: 234 88 12;
+  --accent-ink: 255 255 255;
+  --good: 22 163 74;
+  --bad: 220 38 38;
+  --warn: 202 138 4;
+  color-scheme: light;
 }
 
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: 11 11 13;
+    --surface: 22 22 26;
+    --surface-2: 32 32 37;
+    --line: 44 44 50;
+    --ink: 244 244 246;
+    --muted: 160 160 170;
+    --faint: 105 105 115;
+    --accent: 249 115 22;
+    --accent-ink: 20 10 0;
+    --good: 34 197 94;
+    --bad: 248 113 113;
+    --warn: 250 204 21;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: 11 11 13;
+  --surface: 22 22 26;
+  --surface-2: 32 32 37;
+  --line: 44 44 50;
+  --ink: 244 244 246;
+  --muted: 160 160 170;
+  --faint: 105 105 115;
+  --accent: 249 115 22;
+  --accent-ink: 20 10 0;
+  --good: 34 197 94;
+  --bad: 248 113 113;
+  --warn: 250 204 21;
+  color-scheme: dark;
+}
+
+html, body, #root { min-height: 100%; }
 body {
-  font-family: 'Archivo', system-ui, sans-serif;
-  color: white;
-  margin: 0;
+  @apply bg-bg text-ink font-sans antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+.tabular { font-variant-numeric: tabular-nums; }
+.pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-6px); }
+  75% { transform: translateX(6px); }
 }

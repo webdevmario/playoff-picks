@@ -1,251 +1,108 @@
-# Operations Guide
+# Operations
 
-Everything you need to run NBA Playoff Picks on your Mac and reach it
-from your friends' tailnet devices.
-
-This mirrors the pattern used for `financial-insider` and
-`tater-tot-brain-gym` — same mental model, slightly different stack
-(plain Express + better-sqlite3 instead of Prisma).
-
----
-
-## How it all fits together
+How Playoff Picks runs on the Mac mini, and how to fix it when it doesn't.
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                          Mac                                 │
-│                                                              │
-│  ┌────────────────┐   ┌────────────────┐   ┌─────────────┐  │
-│  │  Express +     │──▶│ better-sqlite3 │   │  Tailscale  │  │
-│  │  server/index  │   │ server/data.db │   │    (VPN)    │  │
-│  │  (port 5174)   │   └────────────────┘   └──────┬──────┘  │
-│  │                │                               │         │
-│  │ serves API +   │                               │         │
-│  │ built client   │                               │         │
-│  └───────┬────────┘                               │         │
-└──────────┼────────────────────────────────────────┼─────────┘
-           │                                        │
-           ▼                                        ▼
-   http://<mac-name>.<tailnet>.ts.net:5174    Private tailnet
-   (only reachable from your devices)
+phone / laptop on the tailnet
+        │  https://<mac>.<tailnet>.ts.net:8447
+        ▼
+tailscale serve (HTTPS, tailnet only)
+        │  http://127.0.0.1:5174
+        ▼
+node server/index.js  (launchd: com.playoff-picks)
+        │  API + built client (client/dist)
+        ▼
+~/Library/Application Support/playoff-picks/playoff-picks.db  (SQLite, WAL)
 ```
 
-Three pieces:
+The server listens on loopback only, so the HTTPS address above is the one way
+in from other devices. That keeps every device on the same URL (no more
+separate `localhost` / `100.x` / `ts.net` copies of the app).
 
-1. **Express server** — serves the JSON API and the pre-built React
-   client on a single port (5174).
-2. **SQLite database** — one file at `server/data.db` (plus
-   `data.db-wal` and `data.db-shm` for WAL mode).
-3. **Tailscale** — a private mesh VPN. Each device gets a `100.x.x.x`
-   IP and a stable `<host>.<tailnet>.ts.net` MagicDNS name.
-
-The Express server is managed by **launchd** so it auto-starts at
-login and auto-restarts on crash.
-
----
-
-## Development vs. production
-
-### Production (the default — what your friends actually use)
-
-- launchd runs `node server/index.js` on port 5174.
-- Express serves both `/api/*` and the static `client/dist/` build.
-- Reachable at `http://<mac-name>.<tailnet>.ts.net:5174` (or
-  `http://100.x.x.x:5174`).
-
-### Development (when you're working on code)
-
-- Stop the production service.
-- `npm run dev` runs the server (5174, `tsx watch`-style) and the
-  Vite dev server (5173) side by side via `concurrently`.
-- Vite proxies `/api` to 5174.
-- You work at `http://localhost:5173` (or
-  `http://<mac-name>.<tailnet>.ts.net:5173` from another tailnet
-  device — Vite is configured with `host: 0.0.0.0`).
-
-### Switching between them
+## Deploy
 
 ```bash
-# Stop production, hop into dev
-npm run prod:stop
-npm run dev
-
-# Done coding, push back to production
-npm run prod:deploy   # = build + prod:restart
+git pull                 # in ~/Documents/development/projects/playoff-picks
+npm run install-all      # only when dependencies changed
+npm run prod:deploy      # build client + restart the service
+npm run prod:status      # launchd entry + {"ok":true}
 ```
 
-`prod:deploy` runs `npm run build` (client → `client/dist/`) and then
-`prod:restart`. Always rebuild before restarting prod if you changed
-client code — the server serves the built bundle, not source.
+## First-time setup on a Mac
 
----
+```bash
+npm run install-all
+npm run build
+npm run prod:install     # copies the launchd plist and starts it
+npm run tailscale:serve  # HTTPS :8447 → 127.0.0.1:5174 (persists across reboots)
+npm run tailscale:url
+```
+
+Other apps on this Mac already use `tailscale serve` ports 443 and 8443–8446;
+Playoff Picks takes 8447.
 
 ## launchd
 
-The plist that defines the service lives at:
+- Plist template: `scripts/com.playoff-picks.plist`. `npm run prod:install`
+  copies it to `~/Library/LaunchAgents/`.
+- Starts at login, restarts on crash (throttled to every 30 s).
+- Runs whatever Node `nvm` defaults to. Any Node 22.13+ works; there are no
+  native modules, so Node upgrades no longer break the service.
 
-```
-~/Library/LaunchAgents/com.playoff-picks.plist
-```
+| Task | Command |
+|---|---|
+| Restart | `npm run prod:restart` |
+| Stop | `npm run prod:stop` |
+| Status | `npm run prod:status` |
+| Recent output | `npm run prod:logs` |
+| Recent errors | `npm run prod:errors` |
 
-A template is checked into the repo at
-`scripts/com.playoff-picks.plist`. To install (or reinstall after
-moving the project):
+### If the app won't load
 
-```bash
-cp scripts/com.playoff-picks.plist ~/Library/LaunchAgents/com.playoff-picks.plist
-npm run prod:start
-npm run prod:status
-```
+1. `npm run prod:status`. No `{"ok":true}` means the server is down; check
+   `npm run prod:errors`.
+2. Port taken: `lsof -i :5174`.
+3. Server is up but other devices can't reach it: `tailscale serve status`
+   should list `:8447 → http://127.0.0.1:5174`. If not, `npm run tailscale:serve`.
+4. Tailscale is on for that device, and it's signed into the same tailnet.
 
-### What the plist does
+## Data
 
-- **RunAtLoad: true** — starts the server at login (or when the plist
-  is loaded).
-- **KeepAlive: true** — restarts the server if it crashes.
-- **ProgramArguments** — sources nvm, cds into `server/`, runs
-  `node index.js`.
-- **StandardOutPath / StandardErrorPath** —
-  `/tmp/playoff-picks.log` and `/tmp/playoff-picks-error.log`.
-
-### Common commands
-
-```bash
-# Wrappers (npm)
-npm run prod:start
-npm run prod:stop
-npm run prod:restart
-npm run prod:status
-npm run prod:logs       # cat stdout
-npm run prod:errors     # cat stderr
-npm run prod:deploy     # build + restart
-
-# Raw equivalents
-launchctl load   ~/Library/LaunchAgents/com.playoff-picks.plist
-launchctl unload ~/Library/LaunchAgents/com.playoff-picks.plist
-launchctl list | grep playoff-picks
-```
-
-### If the service won't start
-
-1. **Port in use.** Something else is on 5174:
-   `lsof -ti:5174 | xargs kill -9`.
-2. **nvm path wrong.** The plist sources `~/.nvm/nvm.sh` — confirm
-   `echo $NVM_DIR` matches.
-3. **Node version drift.** After an `nvm` switch, `npm run prod:restart`.
-4. **Plist syntax.** `plutil ~/Library/LaunchAgents/com.playoff-picks.plist`.
-
----
-
-## Tailscale
-
-### Find this Mac's tailnet address
-
-```bash
-tailscale ip -4         # 100.x.x.x
-tailscale status        # full device list
-hostname                # local hostname (used as MagicDNS prefix)
-```
-
-### Add a friend's device
-
-1. They install Tailscale (App Store / Play Store / brew).
-2. Either share the same account, or invite them as a separate user
-   in [the Tailscale admin](https://login.tailscale.com/admin) → Users.
-3. They open `http://<your-mac-name>.<tailnet>.ts.net:5174` and Add to
-   Home Screen so it looks like an app.
-
-### If a device can't reach the app
-
-1. Tailscale active on both ends? (menu bar / phone toggle)
-2. `ping <mac-name>.<tailnet>.ts.net` from the device.
-3. `curl http://<mac-name>.<tailnet>.ts.net:5174/` should return the
-   app HTML.
-4. If that fails, check `npm run prod:status` and `npm run prod:errors`.
-
----
-
-## Database
-
-### Where it lives
-
-```
-server/data.db        # primary SQLite file
-server/data.db-wal    # write-ahead log
-server/data.db-shm    # shared memory (also part of WAL)
-```
-
-All three files matter when the server is running — back them up as a
-set or stop the server first for a clean copy.
+Database: `~/Library/Application Support/playoff-picks/playoff-picks.db`
+(override with `DATA_DIR` in `server/.env`).
 
 ### Backups
 
 ```bash
-npm run db:backup
-# → backups/data-YYYYMMDD-HHMMSS.db
+npm run db:backup   # → ~/Backups/playoff-picks/playoff-picks-YYYYMMDD-HHMMSS.db (keeps 30)
 ```
 
-Run while the server is up (better-sqlite3's WAL mode tolerates this
-for a snapshot) or stop first if you want the cleanest possible copy.
+It uses SQLite's `.backup`, so it's safe while the server runs. Run it before
+each season starts and after the Finals. Admin → Data → **Export JSON** is a
+readable copy of everything as well.
 
-For automated weekly backup:
-
-```bash
-crontab -e
-# Add (Sunday 3am):
-0 3 * * 0 cd ~/Documents/development/projects/playoff-picks && /opt/homebrew/bin/npm run db:backup
-```
-
-### Restoring
+### Restore
 
 ```bash
 npm run prod:stop
-cp backups/data-20260403-030000.db server/data.db
-rm -f server/data.db-wal server/data.db-shm   # discard stale WAL
+cp ~/Backups/playoff-picks/playoff-picks-YYYYMMDD-HHMMSS.db \
+   ~/Library/Application\ Support/playoff-picks/playoff-picks.db
+rm -f ~/Library/Application\ Support/playoff-picks/playoff-picks.db-{wal,shm}
 npm run prod:start
 ```
 
-### Schema changes
+Only delete the `-wal`/`-shm` files when restoring a `.backup` snapshot. On a
+live database the WAL can hold most of the data.
 
-The schema is defined inline in `server/index.js` with
-`CREATE TABLE IF NOT EXISTS …`. For additive changes (new columns,
-new tables), you can edit the source and add an `ALTER TABLE` block
-guarded by a feature check or a try/catch. For destructive changes,
-back up first.
+### The 2026 database
 
----
+Before v2 the data lived in `server/data.db` inside the repo.
+`npm run db:migrate-legacy` copied it (players, 2026 picks and results) into
+the new database and left a copy of the old files in
+`~/Backups/playoff-picks/legacy-*`. Players carried over have no PIN; the
+first PIN each one enters becomes theirs.
 
-## Updating the app
+## Admin access
 
-```bash
-# After code changes:
-npm run prod:deploy
-npm run prod:logs
-```
-
-If something looks off:
-
-```bash
-npm run prod:errors
-npm run prod:status
-```
-
----
-
-## Quick reference
-
-| Task                         | Command                                                   |
-|------------------------------|-----------------------------------------------------------|
-| Start production             | `npm run prod:start`                                      |
-| Stop production              | `npm run prod:stop`                                       |
-| Restart production           | `npm run prod:restart`                                    |
-| Deploy code changes          | `npm run prod:deploy`                                     |
-| Check service status         | `npm run prod:status`                                     |
-| View stdout                  | `npm run prod:logs`                                       |
-| View stderr                  | `npm run prod:errors`                                     |
-| Kill stuck process on 5174   | `lsof -ti:5174 \| xargs kill -9`                          |
-| Tailscale IP                 | `tailscale ip -4`                                         |
-| Tailscale status             | `tailscale status`                                        |
-| Backup DB                    | `npm run db:backup`                                       |
-| Open the app (local)         | http://localhost:5174                                     |
-| Open the app (tailnet)       | http://&lt;mac&gt;.&lt;tailnet&gt;.ts.net:5174            |
+The first player created (Mario, for the migrated data) is the admin. Admins
+can grant admin to others in **Admin → Players**.
